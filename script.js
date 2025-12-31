@@ -25,6 +25,19 @@
 
   const AUDIO_PATH = "assets/IMG_1713.MP4";
   let audioUnlocked = false;
+  let audioContext = null;
+  let unlockAudio = null;
+
+  // AudioContextの初期化とロック解除用の関数
+  function initAudioContext() {
+    if (audioContext) return;
+    try {
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      audioContext = new AudioContextClass();
+    } catch (e) {
+      console.warn("AudioContext not supported");
+    }
+  }
 
   function resize(){
     const dpr = window.devicePixelRatio || 1;
@@ -41,14 +54,30 @@
   window.addEventListener("resize", resize);
   resize();
 
-  window.addEventListener("pointerdown", () => {
+  window.addEventListener("pointerdown", async () => {
     if (!audioUnlocked) {
+      // AudioContextを生成・resume
+      initAudioContext();
+      if (audioContext && audioContext.state !== 'running') {
+        try {
+          await audioContext.resume();
+        } catch (e) {
+          console.warn("AudioContext resume failed:", e);
+        }
+      }
+
+      // audio.play()を一度実行してロックを解除
       const dummy = new Audio(AUDIO_PATH);
       dummy.volume = 0;
-      dummy.play().then(() => {
-        dummy.pause(); audioUnlocked = true;
+      try {
+        await dummy.play();
+        dummy.pause();
+        audioUnlocked = true;
         hint.innerHTML = "見守り中...";
-      }).catch(() => { audioUnlocked = true; });
+      } catch (e) {
+        console.warn("Audio unlock failed:", e);
+        audioUnlocked = true;
+      }
     }
   });
 
@@ -56,6 +85,10 @@
 
   function handlePresence() {
     if (audioUnlocked) {
+      // AudioContextが停止している場合は再開
+      if (audioContext && audioContext.state !== 'running') {
+        audioContext.resume().catch(() => {});
+      }
       const chime = new Audio(AUDIO_PATH);
       chime.play().catch(() => {});
     }
