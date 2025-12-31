@@ -23,21 +23,9 @@
     leafImages.push(img);
   }
 
-  const AUDIO_PATH = "assets/IMG_1713.MP4";
+  const AUDIO_PATH = "assets/1714.mp4";
   let audioUnlocked = false;
-  let audioContext = null;
-  let unlockAudio = null;
-
-  // AudioContextの初期化とロック解除用の関数
-  function initAudioContext() {
-    if (audioContext) return;
-    try {
-      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-      audioContext = new AudioContextClass();
-    } catch (e) {
-      console.warn("AudioContext not supported");
-    }
-  }
+  let chimeAudio = null; // 再利用するAudioオブジェクト
 
   function resize(){
     const dpr = window.devicePixelRatio || 1;
@@ -56,26 +44,21 @@
 
   window.addEventListener("pointerdown", async () => {
     if (!audioUnlocked) {
-      // AudioContextを生成・resume
-      initAudioContext();
-      if (audioContext && audioContext.state !== 'running') {
-        try {
-          await audioContext.resume();
-        } catch (e) {
-          console.warn("AudioContext resume failed:", e);
-        }
-      }
-
-      // audio.play()を一度実行してロックを解除
-      const dummy = new Audio(AUDIO_PATH);
-      dummy.volume = 0;
+      // 再利用するAudioオブジェクトを作成
+      chimeAudio = new Audio(AUDIO_PATH);
+      chimeAudio.volume = 1.0;
+      
+      // audio.play()を必ず一度成功させてロックを解除
       try {
-        await dummy.play();
-        dummy.pause();
+        await chimeAudio.play();
+        // すぐに一時停止（ロック解除が目的）
+        chimeAudio.pause();
+        chimeAudio.currentTime = 0; // 先頭に戻す
         audioUnlocked = true;
         hint.innerHTML = "見守り中...";
       } catch (e) {
         console.warn("Audio unlock failed:", e);
+        // エラーでもunlockedにしておく（次回の再生を試みる）
         audioUnlocked = true;
       }
     }
@@ -84,13 +67,12 @@
   let activeLeaves = []; // 今出現中の葉っぱ
 
   function handlePresence() {
-    if (audioUnlocked) {
-      // AudioContextが停止している場合は再開
-      if (audioContext && audioContext.state !== 'running') {
-        audioContext.resume().catch(() => {});
-      }
-      const chime = new Audio(AUDIO_PATH);
-      chime.play().catch(() => {});
+    if (audioUnlocked && chimeAudio) {
+      // 既に解除済みのAudioオブジェクトを再利用して再生
+      chimeAudio.currentTime = 0; // 先頭に戻す
+      chimeAudio.play().catch((e) => {
+        console.warn("Audio play failed:", e);
+      });
     }
     sproutLeaf();
   }
